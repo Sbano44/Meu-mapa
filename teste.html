@@ -1,0 +1,1092 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Mapeamento de Território</title>
+  
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  
+  <!-- Bibliotecas para Cache Offline de Tiles (PouchDB + Leaflet TileLayer PouchDB) -->
+  <script src="https://cdn.jsdelivr.net/npm/pouchdb@7.3.1/dist/pouchdb.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/leaflet.tilelayer.pouchdbcached@1.0.0/L.TileLayer.PouchDBCached.js"></script>
+
+  <style>
+    html, body, #map {
+      height: 100%;
+      width: 100vw;
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      font-family: Arial, sans-serif;
+      background-color: #000;
+    }
+
+    #login-screen {
+      position: fixed;
+      top: 0; left: 0; width: 100vw; height: 100vh;
+      background-color: #0d0d0d;
+      z-index: 9999;
+      display: flex; flex-direction: column; justify-content: center; align-items: center;
+      color: white; padding: 20px; box-sizing: border-box;
+    }
+    .login-box { width: 100%; max-width: 360px; display: flex; flex-direction: column; gap: 16px; }
+    .login-box label { font-size: 20px; }
+    .login-box input, .login-box button { padding: 18px; border-radius: 12px; font-size: 22px; }
+    .login-box input { background: #1a1a1a; color: white; border: 1px solid #444; }
+    .login-box button { background: #2b6cb0; color: white; border: none; font-weight: bold; cursor: pointer; }
+
+    #user-bar {
+      position: absolute; top: 10px; left: 10px; right: 10px; z-index: 1000;
+      background: rgba(255, 255, 255, 0.98); padding: 12px 16px; border-radius: 12px;
+      box-shadow: 0 3px 8px rgba(0,0,0,0.3); display: flex; align-items: center; justify-content: space-between; font-size: 18px;
+    }
+
+    /* Plaque Sequencial Fixa */
+    #indicador-sequencia {
+      position: fixed;
+      top: 65px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 2000;
+      background: rgba(15, 23, 42, 0.95);
+      backdrop-filter: blur(8px);
+      color: #ffffff;
+      padding: 10px 20px;
+      border-radius: 30px;
+      box-shadow: 0 4px 15px rgba(0, 0, 0, 0.4);
+      border: 2px solid rgba(255, 255, 255, 0.3);
+      font-size: 16px;
+      font-weight: bold;
+      text-align: center;
+      max-width: 90vw;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      transition: transform 0.1s ease, background-color 0.2s;
+    }
+    
+    #indicador-sequencia:active {
+      transform: translateX(-50%) scale(0.96);
+      background: rgba(30, 41, 59, 0.98);
+    }
+
+    #indicador-sequencia span.destaque {
+      color: #38bdf8;
+    }
+
+    /* Alerta de Quadras Puladas */
+    #alerta-pulados {
+      position: fixed;
+      top: 125px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 2000;
+      background: #7f1d1d;
+      color: #fecaca;
+      padding: 10px 16px;
+      border-radius: 12px;
+      border: 1px solid #ef4444;
+      font-size: 15px;
+      display: none;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+      max-width: 88vw;
+      text-align: center;
+    }
+
+    #btn-fechar-alerta {
+      background: transparent;
+      border: none;
+      color: #fecaca;
+      font-weight: bold;
+      font-size: 18px;
+      cursor: pointer;
+      float: right;
+      margin-left: 10px;
+      line-height: 1;
+    }
+
+    /* Barra Superior com Botão Voltar */
+    #territory-actions {
+      position: absolute; top: 130px; left: 10px; right: 10px; z-index: 1000;
+      display: none; justify-content: center; align-items: center;
+    }
+    .btn-top-action {
+      background: #2b6cb0; color: white; border: none; padding: 14px 22px;
+      border-radius: 28px; font-size: 18px; font-weight: bold; cursor: pointer;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.4); width: 100%; max-width: 380px;
+    }
+
+    /* Painel Flutuante Acessível */
+    #face-controls {
+      position: absolute; top: 185px; left: 50%; transform: translateX(-50%);
+      z-index: 2000; background: #ffffff; padding: 12px 16px; border-radius: 35px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.4); display: none; gap: 12px; align-items: center;
+      max-width: 95vw; overflow-x: auto;
+    }
+    .btn-ctrl {
+      border: none; padding: 14px 20px; border-radius: 28px; font-size: 16px; font-weight: bold; cursor: pointer; color: white; white-space: nowrap;
+    }
+    .btn-confirm { background: #2F855A; }
+    .btn-invert { background: #D69E2E; }
+    .btn-delete { background: #E53E3E; }
+
+    /* Rótulos e Tooltips */
+    .label-quadra, .leaflet-tooltip { 
+      background: rgba(255, 255, 255, 0.95) !important; 
+      border: 1px solid #333 !important; 
+      font-weight: bold !important; 
+      padding: 8px 12px !important; 
+      border-radius: 8px !important; 
+      font-size: 15px !important; 
+      pointer-events: none !important;
+      transition: opacity 0.3s ease;
+    }
+    
+    .label-territorio-container { 
+      background: transparent !important; 
+      border: none !important; 
+      box-shadow: none !important;
+      pointer-events: none !important;
+      transition: opacity 0.3s ease;
+    }
+
+    .hide-labels .label-territorio-container,
+    .hide-labels .label-quadra {
+      opacity: 0 !important;
+      visibility: hidden !important;
+    }
+
+    /* Bandeja Inferior */
+    #bottom-sheet {
+      position: absolute; bottom: -100%; left: 0; right: 0; z-index: 2000;
+      background: #ffffff; border-top-left-radius: 22px; border-top-right-radius: 22px;
+      padding: 22px; transition: bottom 0.3s ease-in-out; display: flex; flex-direction: column; gap: 16px;
+      box-shadow: 0 -4px 15px rgba(0,0,0,0.3);
+    }
+    #bottom-sheet.active { bottom: 0; }
+    #sheet-textarea { width: 100%; height: 85px; padding: 12px; border-radius: 10px; border: 1px solid #cbd5e0; font-size: 18px; box-sizing: border-box; }
+    .sheet-actions { display: flex; flex-direction: column; gap: 12px; }
+    .sheet-row { display: flex; gap: 12px; }
+    .btn-action { flex: 1; padding: 16px; border: none; border-radius: 12px; font-weight: bold; color: white; font-size: 18px; cursor: pointer; }
+
+    #toast-notification {
+      position: fixed; top: 20px; left: 50%; transform: translateX(-50%);
+      background: #2F855A; color: white; font-weight: bold; padding: 14px 28px;
+      border-radius: 28px; box-shadow: 0 4px 12px rgba(0,0,0,0.3); z-index: 9999;
+      display: none; font-size: 18px; text-align: center;
+    }
+
+    /* Animação do Piscar em Azul para destacar a Quadra */
+    @keyframes piscarAzul {
+      0% { fill-color: #38bdf8; fill-opacity: 0.9; stroke-color: #0284c7; stroke-width: 6; }
+      50% { fill-color: #0284c7; fill-opacity: 1; stroke-color: #0369a1; stroke-width: 8; }
+      100% { fill-color: inherit; fill-opacity: inherit; stroke-color: inherit; stroke-width: inherit; }
+    }
+
+    .quadra-destaque-piscar {
+      animation: piscarAzul 1.2s ease-in-out 1;
+    }
+  </style>
+</head>
+<body>
+
+  <div id="login-screen">
+    <h2>Mapeamento de Campo</h2>
+    <div class="login-box">
+      <label for="user-input-name">Seu Nome:</label>
+      <input type="text" id="user-input-name" placeholder="Digite seu nome...">
+      <button onclick="entrarNoApp()">Entrar no Mapa</button>
+    </div>
+  </div>
+
+  <div id="user-bar">
+    <span>Trabalhador: <b id="display-user-name">-</b></span>
+    <button style="border:none; background:none; color:#3182ce; font-weight:bold; font-size:16px; cursor:pointer;" onclick="trocarUsuario()">Trocar</button>
+  </div>
+
+  <!-- Plaquinha Sequencial Fixa (Como Botão Clicável) -->
+  <button id="indicador-sequencia" onclick="focarProximaQuadra()">
+    📌 Próximo Passo: <span id="texto-proxima-quadra" class="destaque">Carregando...</span>
+  </button>
+
+  <!-- Alerta de Quadras Puladas com Botão Fechar -->
+  <div id="alerta-pulados">
+    <button id="btn-fechar-alerta" onclick="fecharAlertaPulados()">✕</button>
+    ⚠️ <strong>Atenção:</strong> Quadras anteriores foram puladas: <br>
+    <span id="lista-pulados"></span>
+  </div>
+
+  <div id="territory-actions">
+    <button class="btn-top-action" onclick="descarregarTodosTerritorios()">⬅️ Voltar / Fechar Territórios</button>
+  </div>
+
+  <div id="face-controls">
+    <button class="btn-ctrl btn-confirm" onclick="confirmarFace()">✔️ Confirmar</button>
+    <button class="btn-ctrl btn-invert" onclick="inverterCaminhoFace()">🔄 Inverter Caminho</button>
+    <button class="btn-ctrl btn-delete" onclick="apagarPontosFace()">🗑️ Apagar</button>
+  </div>
+
+  <div id="map"></div>
+
+  <div id="toast-notification">✔️ Face confirmada!</div>
+
+  <div id="bottom-sheet">
+    <div style="display:flex; justify-content:space-between; align-items:center;">
+      <span id="sheet-quadra-nome" style="font-weight:bold; color:#2b6cb0; font-size:22px;">Quadra</span>
+      <button onclick="fecharBandeja()" style="border:none; background:#e2e8f0; border-radius:50%; width:42px; height:42px; font-weight:bold; font-size:20px; cursor:pointer;">✕</button>
+    </div>
+
+    <div id="sheet-content-cinza" style="display:none;" class="sheet-actions">
+      <p style="margin:0; font-weight:bold; color:#4a5568; font-size: 18px;">Selecione o estado da quadra:</p>
+      <div class="sheet-row">
+        <button class="btn-action" style="background:#D69E2E;" onclick="definirEstadoQuadra(1)">🟡 Quadra Aberta</button>
+        <button class="btn-action" style="background:#2F855A;" onclick="definirEstadoQuadra(2)">🟢 Quadra Fechada / Concluída</button>
+      </div>
+    </div>
+
+    <div id="sheet-content-amarelo" style="display:none;" class="sheet-actions">
+      <textarea id="sheet-textarea" placeholder="Digite uma observação aqui..."></textarea>
+      <div id="sheet-autor" style="font-size:15px; color:#718096; font-style:italic;"></div>
+      <div class="sheet-row">
+        <button class="btn-action" style="background:#2F855A;" onclick="salvarAnotacao()">Salvar Nota</button>
+        <button class="btn-action" style="background:#3182ce;" onclick="ativarModoFace()">Marcar / Editar Face</button>
+      </div>
+      <button class="btn-action" style="background:#2F855A; width: 100%;" onclick="definirEstadoQuadra(2)">✔️ Concluir esta Quadra</button>
+    </div>
+
+    <div id="sheet-content-verde" style="display:none;" class="sheet-actions">
+      <p style="margin:0; font-weight:bold; color:#2F855A; font-size:18px;">Esta quadra já está concluída.</p>
+      <button class="btn-action" style="background:#E53E3E; width: 100%;" onclick="desmarcarQuadra()">🗑️ Desmarcar Quadra</button>
+    </div>
+  </div>
+
+  <script src="coordenadas.js"></script>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@turf/turf@6/turf.min.js"></script>
+
+  <script>
+    let usuarioAtual = localStorage.getItem("usuario_nome") || "";
+    let map = null;
+    let territoriosPoligonos = {};
+    let territoriosAbertos = new Set();
+    let quadrasObjetos = {};
+    let quadraAtualTrabalho = null;
+    let proximaQuadraGlobal = null;
+
+    const paletaCores = [
+      '#2B6CB0', '#C53030', '#D69E2E', '#6B46C1', '#2C7A7B', 
+      '#B83280', '#C05621', '#4C51BF', '#276749', '#975A16', 
+      '#553C9A', '#97266D', '#285E61'
+    ];
+
+    const estilos = {
+      cinza: { color: '#333', fillColor: '#888', fillOpacity: 0.6, interactive: true, bubblingMouseEvents: false },
+      amarelo: { color: '#D69E2E', fillColor: '#ECC94B', fillOpacity: 0.7, interactive: true, bubblingMouseEvents: false },
+      verde: { color: '#2F855A', fillColor: '#48BB78', fillOpacity: 0.7, interactive: true, bubblingMouseEvents: false }
+    };
+
+    window.onload = function() {
+      document.getElementById("sheet-textarea").addEventListener("input", function() {
+        if (quadraAtualTrabalho) {
+          quadraAtualTrabalho.anotacao = this.value;
+          quadraAtualTrabalho.autorAnotacao = usuarioAtual;
+          salvarDadosMemoria(quadraAtualTrabalho);
+        }
+      });
+
+      if (usuarioAtual) {
+        document.getElementById("login-screen").style.display = "none";
+        document.getElementById("display-user-name").innerText = usuarioAtual;
+        iniciarMapa();
+      }
+    };
+
+    function entrarNoApp() {
+      const nomeDigitado = document.getElementById("user-input-name").value.trim();
+      if (!nomeDigitado) return alert("Por favor, digite seu nome.");
+      usuarioAtual = nomeDigitado;
+      localStorage.setItem("usuario_nome", nomeDigitado);
+      document.getElementById("display-user-name").innerText = nomeDigitado;
+      document.getElementById("login-screen").style.display = "none";
+      if (!map) iniciarMapa();
+    }
+
+    function trocarUsuario() {
+      document.getElementById("login-screen").style.display = "flex";
+    }
+
+    function fecharAlertaPulados() {
+      document.getElementById("alerta-pulados").style.display = "none";
+    }
+
+    function mostrarToast(mensagem) {
+      const toast = document.getElementById("toast-notification");
+      toast.innerText = mensagem;
+      toast.style.display = "block";
+      setTimeout(() => { toast.style.display = "none"; }, 2000);
+    }
+
+    function calcularLimitesSemSobreposicao() {
+      if (typeof DADOS_TERRITORIOS === 'undefined') return null;
+      let allPoints = [];
+      let chaves = Object.keys(DADOS_TERRITORIOS);
+      chaves.forEach((chave1) => {
+        let q1 = DADOS_TERRITORIOS[chave1].quadras;
+        q1.forEach(q => {
+          if (q.coords) {
+            q.coords.forEach(p => allPoints.push([p[0], p[1]]));
+          }
+        });
+      });
+
+      if (allPoints.length === 0) return null;
+      return L.latLngBounds(allPoints);
+    }
+
+    /* --- Lógica da Plaque Sequencial e Alerta de Pulados --- */
+    function obterListaOrdenadaQuadras() {
+      if (typeof DADOS_TERRITORIOS === 'undefined') return [];
+      let lista = [];
+      const chavesTerritorios = Object.keys(DADOS_TERRITORIOS).sort((a, b) => {
+        return a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
+      });
+
+      chavesTerritorios.forEach(idTerritorio => {
+        let t = DADOS_TERRITORIOS[idTerritorio];
+        let quadrasOrdenadas = [...t.quadras].sort((a, b) => {
+          return a.nome.localeCompare(b.nome, undefined, { numeric: true, sensitivity: 'base' });
+        });
+
+        quadrasOrdenadas.forEach(q => {
+          if (q.nome.toLowerCase().includes("quadra 0") || q.nome.toLowerCase().includes("quadra zero")) return;
+
+          lista.push({
+            idTerritorio: idTerritorio,
+            nomeTerritorio: t.nome,
+            nomeQuadra: q.nome,
+            coords: q.coords,
+            idUnico: `${idTerritorio}_${q.nome}`
+          });
+        });
+      });
+
+      return lista;
+    }
+
+    function atualizarProgressoEIndicador(quadraSelecionada = null) {
+      const listaQuadras = obterListaOrdenadaQuadras();
+      if (listaQuadras.length === 0) return;
+
+      let proximaQuadra = null;
+      let puladas = [];
+      let achouProxima = false;
+
+      for (let item of listaQuadras) {
+        let est = 0;
+        if (quadrasObjetos[item.idUnico]) {
+          est = quadrasObjetos[item.idUnico].estado;
+        } else {
+          const dadosSalvos = carregarDadosMemoria(item.idUnico);
+          if (dadosSalvos && dadosSalvos.estado !== undefined) est = dadosSalvos.estado;
+        }
+
+        // CORREÇÃO: Apenas quadras VERDES (estado == 2) são consideradas concluídas.
+        // Se a quadra estiver Aberta (amarela, estado == 1) ou Cinza (estado == 0), ela ainda deve ser finalizada.
+        const isConcluida = (est === 2);
+
+        if (!isConcluida && !achouProxima) {
+          proximaQuadra = item;
+          achouProxima = true;
+        }
+      }
+
+      proximaQuadraGlobal = proximaQuadra;
+
+      // Atualizar Texto do Botão Superior
+      const elTexto = document.getElementById("texto-proxima-quadra");
+      if (proximaQuadra) {
+        elTexto.innerText = `${proximaQuadra.nomeTerritorio} - ${proximaQuadra.nomeQuadra}`;
+      } else {
+        elTexto.innerText = "🎉 Todos os territórios foram concluídos!";
+      }
+
+      // Verificar se o usuário pulou etapas
+      if (quadraSelecionada && proximaQuadra) {
+        let idxProxima = listaQuadras.findIndex(i => i.idUnico === proximaQuadra.idUnico);
+        let idxAtual = listaQuadras.findIndex(i => i.idUnico === quadraSelecionada.idUnico);
+
+        if (idxAtual > idxProxima) {
+          for (let i = idxProxima; i < idxAtual; i++) {
+            let est = 0;
+            let itemPrev = listaQuadras[i];
+            if (quadrasObjetos[itemPrev.idUnico]) {
+              est = quadrasObjetos[itemPrev.idUnico].estado;
+            } else {
+              const d = carregarDadosMemoria(itemPrev.idUnico);
+              if (d && d.estado !== undefined) est = d.estado;
+            }
+
+            if (est !== 2) {
+              puladas.push(`${itemPrev.nomeTerritorio} (${itemPrev.nomeQuadra})`);
+            }
+          }
+        }
+      }
+
+      // Exibir/Ocultar Banner de Alerta de Pulados
+      const elAlerta = document.getElementById("alerta-pulados");
+      const elLista = document.getElementById("lista-pulados");
+      if (puladas.length > 0) {
+        elLista.innerText = puladas.join(", ");
+        elAlerta.style.display = "block";
+      } else {
+        elAlerta.style.display = "none";
+      }
+    }
+
+    /* Função ao Clicar no Botão do Próximo Passo */
+    function focarProximaQuadra() {
+      if (!proximaQuadraGlobal) {
+        mostrarToast("🎉 Todos os territórios já foram concluídos!");
+        return;
+      }
+
+      const idTerritorio = proximaQuadraGlobal.idTerritorio;
+      const idUnicoQuadra = proximaQuadraGlobal.idUnico;
+
+      if (!territoriosAbertos.has(idTerritorio)) {
+        abrirTerritorio(idTerritorio);
+      }
+
+      setTimeout(() => {
+        const objQuadra = quadrasObjetos[idUnicoQuadra];
+        if (objQuadra) {
+          map.fitBounds(objQuadra.getBounds(), { padding: [50, 50], maxZoom: 18 });
+          
+          let elementoPath = objQuadra._path;
+          if (elementoPath) {
+            elementoPath.classList.remove("quadra-destaque-piscar");
+            void elementoPath.offsetWidth;
+            elementoPath.classList.add("quadra-destaque-piscar");
+            setTimeout(() => {
+              elementoPath.classList.remove("quadra-destaque-piscar");
+            }, 1300);
+          }
+        }
+      }, 150);
+    }
+
+    function iniciarMapa() {
+      map = L.map('map', { zoomControl: false });
+      
+      // TileLayer configurado com suporte a Cache Automático via PouchDB
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { 
+        maxZoom: 19,
+        useCache: true,
+        crossOrigin: true,
+        cacheMaxAge: 1000 * 60 * 60 * 24 * 30 // Salva as imagens do mapa no celular por até 30 dias
+      }).addTo(map);
+
+      const limitesGerais = calcularLimitesSemSobreposicao();
+      if (limitesGerais) {
+        map.setMaxBounds(limitesGerais.pad(0.60));
+        map.setMinZoom(14);
+        map.fitBounds(limitesGerais, { padding: [20, 20], maxZoom: 17 });
+      } else {
+        map.setView([-22.789371, -43.329093], 17);
+      }
+
+      function atualizarVisibilidadeLabels() {
+        if (map.getZoom() < 16) {
+          document.getElementById('map').classList.add('hide-labels');
+        } else {
+          document.getElementById('map').classList.remove('hide-labels');
+        }
+      }
+      
+      map.on('zoomend', atualizarVisibilidadeLabels);
+      atualizarVisibilidadeLabels();
+
+      carregarLimitesTerritorios();
+      atualizarProgressoEIndicador();
+
+      map.on('click', function(e) {
+        if (modoMarcarFace) {
+          processarCliqueFace(e.latlng);
+        }
+      });
+
+      map.locate({ setView: false, maxZoom: 17 });
+      
+      const iconePessoinha = L.divIcon({
+        className: 'custom-user-icon',
+        html: '<div style="background-color: #3182ce; color: white; border-radius: 50%; width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; font-size: 20px; box-shadow: 0 2px 6px rgba(0,0,0,0.4); border: 2px solid white;">👤</div>',
+        iconSize: [36, 36],
+        iconAnchor: [18, 18]
+      });
+
+      map.on('locationfound', e => {
+        L.marker(e.latlng, { icon: iconePessoinha }).addTo(map).bindPopup("<b>Você está aqui</b>").openPopup();
+      });
+    }
+
+    function calcularUniaoTerritorio(quadras) {
+      if (!quadras || quadras.length === 0) return [];
+      try {
+        let polyUnido = null;
+        quadras.forEach(q => {
+          if (!q.coords || q.coords.length < 3) return;
+          let coordsLngLat = q.coords.map(p => [p[1], p[0]]);
+          if (coordsLngLat[0][0] !== coordsLngLat[coordsLngLat.length - 1][0] || 
+              coordsLngLat[0][1] !== coordsLngLat[coordsLngLat.length - 1][1]) {
+            coordsLngLat.push([coordsLngLat[0][0], coordsLngLat[0][1]]);
+          }
+          let poligonoAtual = turf.polygon([coordsLngLat]);
+          if (!polyUnido) {
+            polyUnido = poligonoAtual;
+          } else {
+            polyUnido = turf.union(polyUnido, poligonoAtual);
+          }
+        });
+        if (polyUnido) {
+          if (polyUnido.geometry.type === 'Polygon') {
+            return polyUnido.geometry.coordinates[0].map(p => [p[1], p[0]]);
+          } else if (polyUnido.geometry.type === 'MultiPolygon') {
+            return polyUnido.geometry.coordinates.map(poly => poly[0].map(p => [p[1], p[0]]));
+          }
+        }
+      } catch (e) {
+        console.error("Falha ao calcular união Turf.js:", e);
+      }
+      return [];
+    }
+
+    function carregarLimitesTerritorios() {
+      if (typeof DADOS_TERRITORIOS === 'undefined') return;
+      
+      const chaves = Object.keys(DADOS_TERRITORIOS);
+      chaves.forEach((chave, index) => {
+        const dados = DADOS_TERRITORIOS[chave];
+        const corBase = paletaCores[index % paletaCores.length];
+        
+        const contornoUnido = calcularUniaoTerritorio(dados.quadras);
+
+        const polígono = L.polygon(contornoUnido.length ? contornoUnido : dados.contorno, {
+          color: corBase,
+          fillColor: corBase,
+          fillOpacity: 0.2,
+          dashArray: '6, 6',
+          weight: 3,
+          interactive: true
+        }).addTo(map);
+        
+        polígono.idTerritorio = chave;
+        polígono.dados = dados;
+        polígono.corBase = corBase;
+
+        // Centroide exato usando Turf.js para centralização perfeita
+        let centroExato = polígono.getBounds().getCenter();
+        try {
+          const geoJsonFeature = polígono.toGeoJSON();
+          const centroide = turf.centroid(geoJsonFeature);
+          centroExato = L.latLng(centroide.geometry.coordinates[1], centroide.geometry.coordinates[0]);
+        } catch (err) {
+          console.warn("Usando centro padrão do BoundingBox para " + chave);
+        }
+
+        const tooltip = L.tooltip({
+          permanent: true,
+          direction: 'center',
+          className: 'label-territorio-container',
+          interactive: false
+        }).setContent(`
+          <div style="background-color: ${corBase}; color: white; padding: 8px 14px; border-radius: 10px; font-weight: bold; font-size: 15px; box-shadow: 0 2px 6px rgba(0,0,0,0.3); text-align: center;">
+            ${dados.nome}<br><small style="font-size: 12px; font-weight: normal; opacity: 0.9;">(Toque para abrir)</small>
+          </div>
+        `);
+
+        polígono.bindTooltip(tooltip);
+        polígono.getTooltip().setLatLng(centroExato);
+
+        polígono.on('click', function(e) { 
+          if (modoMarcarFace) {
+            processarCliqueFace(e.latlng);
+            return;
+          }
+          abrirTerritorio(chave); 
+        });
+
+        territoriosPoligonos[chave] = polígono;
+        atualizarStatusTerritorio(chave);
+      });
+    }
+
+    function abrirTerritorio(chave) {
+      if (territoriosAbertos.has(chave)) return;
+      territoriosAbertos.add(chave);
+      const dados = DADOS_TERRITORIOS[chave];
+
+      if (territoriosPoligonos[chave]) {
+        map.removeLayer(territoriosPoligonos[chave]);
+      }
+
+      const grupoNovasQuadras = L.featureGroup();
+
+      dados.quadras.forEach(q => {
+        const idUnico = chave + "_" + q.nome;
+        if (!quadrasObjetos[idUnico]) {
+          const novaQuadra = criarQuadra(q.coords, q.nome, chave);
+          quadrasObjetos[idUnico] = novaQuadra;
+          grupoNovasQuadras.addLayer(novaQuadra);
+        }
+      });
+
+      if (grupoNovasQuadras.getLayers().length > 0) {
+        map.fitBounds(grupoNovasQuadras.getBounds(), { padding: [30, 30] });
+      }
+
+      document.getElementById("territory-actions").style.display = "flex";
+      atualizarStatusTerritorio(chave);
+    }
+
+    function descarregarTodosTerritorios() {
+      Object.keys(quadrasObjetos).forEach(idUnico => {
+        const q = quadrasObjetos[idUnico];
+        limparElementosVisuais(q);
+        map.removeLayer(q);
+      });
+      quadrasObjetos = {};
+
+      territoriosAbertos.forEach(chave => {
+        if (territoriosPoligonos[chave]) {
+          territoriosPoligonos[chave].addTo(map);
+          atualizarStatusTerritorio(chave);
+        }
+      });
+
+      territoriosAbertos.clear();
+      document.getElementById("territory-actions").style.display = "none";
+      encerrarModoFace();
+      fecharBandeja();
+      atualizarProgressoEIndicador();
+    }
+
+    function atualizarStatusTerritorio(chave) {
+      const dados = DADOS_TERRITORIOS[chave];
+      if (!dados) return;
+
+      let totalQuadrasValidas = 0;
+      let emAndamento = 0, concluidas = 0;
+
+      dados.quadras.forEach(q => {
+        const idUnico = chave + "_" + q.nome;
+        const ehQuadraZero = q.nome.toLowerCase().includes("quadra 0") || q.nome.toLowerCase().includes("quadra zero");
+
+        if (ehQuadraZero) return;
+
+        totalQuadrasValidas++;
+        let est = 0;
+
+        if (quadrasObjetos[idUnico]) {
+          est = quadrasObjetos[idUnico].estado;
+        } else {
+          const dadosSalvos = carregarDadosMemoria(idUnico);
+          if (dadosSalvos && dadosSalvos.estado !== undefined) {
+            est = dadosSalvos.estado;
+          }
+        }
+
+        if (est === 1) emAndamento++;
+        if (est === 2) concluidas++;
+      });
+
+      const polígono = territoriosPoligonos[chave];
+      if (!polígono) return;
+
+      const corBase = polígono.corBase || '#2b6cb0';
+      let corFundoLabel = corBase;
+      let textoLabel = dados.nome;
+
+      if (concluidas === totalQuadrasValidas && totalQuadrasValidas > 0) {
+        polígono.setStyle({ color: '#2F855A', fillColor: '#48BB78', fillOpacity: 0.4, dashArray: null, weight: 4 });
+        corFundoLabel = '#2F855A';
+        textoLabel = `✔️ ${dados.nome}`;
+      } else if (emAndamento > 0 || concluidas > 0) {
+        polígono.setStyle({ color: '#D69E2E', fillColor: '#ECC94B', fillOpacity: 0.4, dashArray: null, weight: 4 });
+        corFundoLabel = '#D69E2E';
+      } else {
+        polígono.setStyle({ color: corBase, fillColor: corBase, fillOpacity: 0.2, dashArray: '6, 6', weight: 3 });
+        corFundoLabel = corBase;
+      }
+
+      if (polígono.getTooltip()) {
+        polígono.setTooltipContent(`
+          <div style="background-color: ${corFundoLabel}; color: white; padding: 8px 14px; border-radius: 10px; font-weight: bold; font-size: 15px; box-shadow: 0 2px 6px rgba(0,0,0,0.3); text-align: center;">
+            ${textoLabel}<br><small style="font-size: 12px; font-weight: normal; opacity: 0.9;">(Toque para abrir)</small>
+          </div>
+        `);
+      }
+    }
+
+    function criarQuadra(coords, nome, idTerritorio) {
+      const idUnico = idTerritorio + "_" + nome;
+      const ehQuadraZero = nome.toLowerCase().includes("quadra 0") || nome.toLowerCase().includes("quadra zero");
+
+      const estiloInicial = ehQuadraZero ? estilos.verde : estilos.cinza;
+      const quadra = L.polygon(coords, Object.assign({}, estiloInicial, { interactive: !ehQuadraZero })).addTo(map);
+      
+      quadra.idUnico = idUnico;
+      quadra.nome = nome; 
+      quadra.coords = coords;
+      quadra.idTerritorio = idTerritorio;
+      quadra.elementosFaces = [];
+      quadra.dadosFacesSalvas = [];
+
+      if (ehQuadraZero) {
+        quadra.estado = 2;
+      } else {
+        const dadosSalvos = carregarDadosMemoria(idUnico);
+        if (dadosSalvos) {
+          quadra.estado = dadosSalvos.estado || 0;
+          quadra.anotacao = dadosSalvos.anotacao || "";
+          quadra.autorAnotacao = dadosSalvos.autorAnotacao || "";
+          quadra.dadosFacesSalvas = dadosSalvos.faces || [];
+          
+          if (quadra.estado === 1) {
+            quadra.setStyle(estilos.amarelo);
+            restaurarFacesSalvas(quadra);
+          } else if (quadra.estado === 2) {
+            quadra.setStyle(estilos.verde);
+          }
+        } else {
+          quadra.estado = 0;
+          quadra.anotacao = "";
+          quadra.autorAnotacao = "";
+        }
+      }
+
+      quadra.atualizarRotulo = function() {
+        if (this.getTooltip()) this.unbindTooltip();
+        if (!ehQuadraZero) {
+          this.bindTooltip(nome, { permanent: true, direction: 'center', interactive: false, className: 'label-quadra' });
+        }
+      };
+      quadra.atualizarRotulo();
+
+      if (!ehQuadraZero) {
+        function aoClicarNaQuadra(e) {
+          if (e && e.originalEvent) {
+            L.DomEvent.stopPropagation(e);
+          }
+          if (modoMarcarFace) {
+            processarCliqueFace(e.latlng);
+            return;
+          }
+          abrirBandejaQuadra(e, quadra.idUnico);
+        }
+
+        quadra.on('click', aoClicarNaQuadra);
+        quadra.on('mousedown', aoClicarNaQuadra);
+      }
+
+      return quadra;
+    }
+
+    function restaurarFacesSalvas(q) {
+      if (!q.dadosFacesSalvas) return;
+      q.dadosFacesSalvas.forEach(f => {
+        const linha = L.polyline(f.caminho, { color: '#2F855A', weight: 6, opacity: 0.9 }).addTo(map);
+        const iconeInicio = L.divIcon({ className: 'ponto-disc', html: '<div style="background:#2F855A; color:white; border-radius:50%; width:18px; height:18px; font-size:11px; display:flex; align-items:center; justify-content:center; border:2px solid white;">I</div>', iconSize: [18, 18], iconAnchor: [9, 9] });
+        const iconeFim = L.divIcon({ className: 'ponto-disc', html: '<div style="background:#2F855A; color:white; border-radius:50%; width:18px; height:18px; font-size:11px; display:flex; align-items:center; justify-content:center; border:2px solid white;">F</div>', iconSize: [18, 18], iconAnchor: [9, 9] });
+        const mA = L.marker(f.pA, { icon: iconeInicio }).addTo(map);
+        const mB = L.marker(f.pB, { icon: iconeFim }).addTo(map);
+        q.elementosFaces.push(linha, mA, mB);
+      });
+    }
+
+    function limparElementosVisuais(q) {
+      if (q && q.elementosFaces) {
+        q.elementosFaces.forEach(el => map.removeLayer(el));
+        q.elementosFaces = [];
+      }
+    }
+
+    function limparElementos(q) {
+      if (!q) return;
+      q.anotacao = ""; 
+      q.autorAnotacao = "";
+      q.dadosFacesSalvas = [];
+      limparElementosVisuais(q);
+      salvarDadosMemoria(q);
+    }
+
+    function salvarDadosMemoria(q) {
+      const payload = {
+        estado: q.estado,
+        anotacao: q.anotacao,
+        autorAnotacao: q.autorAnotacao,
+        faces: q.dadosFacesSalvas || []
+      };
+      localStorage.setItem("quadra_data_" + q.idUnico, JSON.stringify(payload));
+    }
+
+    function carregarDadosMemoria(idUnico) {
+      const raw = localStorage.getItem("quadra_data_" + idUnico);
+      return raw ? JSON.parse(raw) : null;
+    }
+
+    function abrirBandejaQuadra(e, idUnico) {
+      if (e) L.DomEvent.stopPropagation(e);
+      quadraAtualTrabalho = quadrasObjetos[idUnico];
+      if (!quadraAtualTrabalho) return;
+      
+      document.getElementById("sheet-quadra-nome").innerText = quadraAtualTrabalho.nome;
+      
+      document.getElementById("sheet-content-cinza").style.display = "none";
+      document.getElementById("sheet-content-amarelo").style.display = "none";
+      document.getElementById("sheet-content-verde").style.display = "none";
+
+      if (quadraAtualTrabalho.estado === 0) {
+        document.getElementById("sheet-content-cinza").style.display = "flex";
+      } else if (quadraAtualTrabalho.estado === 1) {
+        document.getElementById("sheet-textarea").value = quadraAtualTrabalho.anotacao || "";
+        document.getElementById("sheet-autor").innerText = quadraAtualTrabalho.autorAnotacao ? "Alterado por: " + quadraAtualTrabalho.autorAnotacao : "";
+        document.getElementById("sheet-content-amarelo").style.display = "flex";
+      } else if (quadraAtualTrabalho.estado === 2) {
+        document.getElementById("sheet-content-verde").style.display = "flex";
+      }
+
+      document.getElementById("bottom-sheet").classList.add("active");
+      atualizarProgressoEIndicador(quadraAtualTrabalho);
+    }
+
+    function fecharBandeja() { 
+      document.getElementById("bottom-sheet").classList.remove("active"); 
+    }
+
+    function definirEstadoQuadra(novoEstado) {
+      if (!quadraAtualTrabalho) return;
+      
+      quadraAtualTrabalho.estado = novoEstado;
+      
+      if (novoEstado === 1) {
+        quadraAtualTrabalho.setStyle(estilos.amarelo);
+      } else if (novoEstado === 2) {
+        quadraAtualTrabalho.setStyle(estilos.verde);
+        limparElementosVisuais(quadraAtualTrabalho);
+        encerrarModoFace();
+      }
+
+      salvarDadosMemoria(quadraAtualTrabalho);
+      quadraAtualTrabalho.atualizarRotulo();
+      atualizarStatusTerritorio(quadraAtualTrabalho.idTerritorio);
+      atualizarProgressoEIndicador(quadraAtualTrabalho);
+
+      if (novoEstado === 1) {
+        abrirBandejaQuadra(null, quadraAtualTrabalho.idUnico);
+      } else {
+        fecharBandeja();
+      }
+    }
+
+    function desmarcarQuadra() {
+      if (!quadraAtualTrabalho) return;
+      quadraAtualTrabalho.setStyle(estilos.cinza);
+      quadraAtualTrabalho.estado = 0;
+      limparElementos(quadraAtualTrabalho);
+      encerrarModoFace(); 
+      salvarDadosMemoria(quadraAtualTrabalho);
+      quadraAtualTrabalho.atualizarRotulo();
+      atualizarStatusTerritorio(quadraAtualTrabalho.idTerritorio);
+      atualizarProgressoEIndicador();
+      fecharBandeja();
+    }
+
+    function salvarAnotacao() {
+      if (quadraAtualTrabalho) {
+        quadraAtualTrabalho.anotacao = document.getElementById("sheet-textarea").value;
+        quadraAtualTrabalho.autorAnotacao = usuarioAtual;
+        salvarDadosMemoria(quadraAtualTrabalho);
+        mostrarToast("📝 Nota salva com sucesso!");
+      }
+      fecharBandeja();
+    }
+
+    let modoMarcarFace = false, pontosFaceTemp = [], marcadoresTemp = [], linhaPreview = null;
+    let caminhoInvertido = false;
+    let bloqueadoCooldown = false;
+
+    function ativarModoFace() {
+      fecharBandeja();
+      modoMarcarFace = true;
+      caminhoInvertido = false;
+      pontosFaceTemp = []; 
+      marcadoresTemp = [];
+      linhaPreview = null;
+      bloqueadoCooldown = false;
+      document.getElementById("face-controls").style.display = "flex";
+    }
+
+    function processarCliqueFace(latlngClique) {
+      if (!quadraAtualTrabalho) return;
+      if (pontosFaceTemp.length >= 2) return; 
+
+      if (pontosFaceTemp.length === 1 && bloqueadoCooldown) {
+        return; 
+      }
+
+      const pontoAjustado = snapParaLinhaMaisProxima(latlngClique, quadraAtualTrabalho.coords);
+      pontosFaceTemp.push(pontoAjustado);
+      
+      const eInicio = (pontosFaceTemp.length === 1);
+      
+      const htmlIcon = eInicio 
+        ? '<div style="background:#2F855A; color:white; border-radius:50%; width:18px; height:18px; font-size:11px; display:flex; align-items:center; justify-content:center; border:2px solid white;">I</div>'
+        : '<div style="background:#2F855A; color:white; border-radius:50%; width:18px; height:18px; font-size:11px; display:flex; align-items:center; justify-content:center; border:2px solid white;">F</div>';
+
+      const iconeDiscreto = L.divIcon({ className: 'ponto-disc', html: htmlIcon, iconSize: [18, 18], iconAnchor: [9, 9] });
+      
+      const marker = L.marker(pontoAjustado, { icon: iconeDiscreto, draggable: true }).addTo(map);
+      marcadoresTemp.push(marker);
+
+      marker.on('drag', function() {
+        const novoP = snapParaLinhaMaisProxima(marker.getLatLng(), quadraAtualTrabalho.coords);
+        if (eInicio) pontosFaceTemp[0] = novoP;
+        else pontosFaceTemp[1] = novoP;
+        if (pontosFaceTemp.length === 2) desenharContornoFace();
+      });
+
+      if (eInicio) {
+        bloqueadoCooldown = true;
+        setTimeout(() => {
+          bloqueadoCooldown = false;
+        }, 1000); 
+      }
+
+      if (pontosFaceTemp.length === 2) {
+        desenharContornoFace();
+      }
+    }
+
+    function snapParaLinhaMaisProxima(ponto, coords) {
+      let menorDist = Infinity, pAjustado = ponto;
+      for (let i = 0; i < coords.length; i++) {
+        let p1 = L.latLng(coords[i]);
+        let p2 = L.latLng(coords[(i + 1) % coords.length]);
+        let pProximo = L.LineUtil.closestPointOnSegment(map.latLngToLayerPoint(ponto), map.latLngToLayerPoint(p1), map.latLngToLayerPoint(p2));
+        let latlngP = map.layerPointToLatLng(pProximo);
+        let dist = ponto.distanceTo(latlngP);
+        if (dist < menorDist) { menorDist = dist; pAjustado = latlngP; }
+      }
+      return pAjustado;
+    }
+
+    function calcularCaminhoContorno(pA, pB, coords, invertido) {
+      let menorDistA = Infinity, indexA = 0;
+      let menorDistB = Infinity, indexB = 0;
+
+      for (let i = 0; i < coords.length; i++) {
+        let p1 = L.latLng(coords[i]);
+        let p2 = L.latLng(coords[(i + 1) % coords.length]);
+        let pProxA = map.layerPointToLatLng(L.LineUtil.closestPointOnSegment(map.latLngToLayerPoint(pA), map.latLngToLayerPoint(p1), map.latLngToLayerPoint(p2)));
+        let distA = pA.distanceTo(pProxA);
+        if (distA < menorDistA) { menorDistA = distA; indexA = i; }
+        let pProxB = map.layerPointToLatLng(L.LineUtil.closestPointOnSegment(map.latLngToLayerPoint(pB), map.latLngToLayerPoint(p1), map.latLngToLayerPoint(p2)));
+        let distB = pB.distanceTo(pProxB);
+        if (distB < menorDistB) { menorDistB = distB; indexB = i; }
+      }
+
+      let caminho = [pA];
+      if (!invertido) {
+        if (indexA !== indexB) {
+          let i = indexA;
+          while (i !== indexB) {
+            i = (i + 1) % coords.length;
+            caminho.push(L.latLng(coords[i]));
+          }
+        }
+      } else {
+        if (indexA !== indexB) {
+          let i = indexA;
+          while (i !== indexB) {
+            caminho.push(L.latLng(coords[i]));
+            i = (i - 1 + coords.length) % coords.length;
+          }
+        }
+      }
+      caminho.push(pB);
+      return caminho;
+    }
+
+    function desenharContornoFace() {
+      if (linhaPreview) map.removeLayer(linhaPreview);
+      const caminho = calcularCaminhoContorno(pontosFaceTemp[0], pontosFaceTemp[1], quadraAtualTrabalho.coords, caminhoInvertido);
+      linhaPreview = L.polyline(caminho, { color: '#2F855A', weight: 6, opacity: 0.9 }).addTo(map);
+    }
+
+    function inverterCaminhoFace() {
+      if (pontosFaceTemp.length < 2) return mostrarToast("Coloque os dois pontos antes de inverter!");
+      caminhoInvertido = !caminhoInvertido;
+      desenharContornoFace();
+    }
+
+    function confirmarFace() {
+      if (linhaPreview && quadraAtualTrabalho) {
+        const caminhoCalculado = calcularCaminhoContorno(pontosFaceTemp[0], pontosFaceTemp[1], quadraAtualTrabalho.coords, caminhoInvertido);
+        quadraAtualTrabalho.elementosFaces.push(linhaPreview);
+        marcadoresTemp.forEach(m => quadraAtualTrabalho.elementosFaces.push(m));
+        
+        quadraAtualTrabalho.dadosFacesSalvas.push({
+          pA: pontosFaceTemp[0],
+          pB: pontosFaceTemp[1],
+          caminho: caminhoCalculado
+        });
+
+        salvarDadosMemoria(quadraAtualTrabalho);
+        linhaPreview = null;
+        marcadoresTemp = []; 
+      }
+      encerrarModoFace();
+      mostrarToast("✔️ Face confirmada e salva!");
+    }
+
+    function apagarPontosFace() {
+      marcadoresTemp.forEach(m => map.removeLayer(m));
+      if (linhaPreview) map.removeLayer(linhaPreview);
+      pontosFaceTemp = []; 
+      marcadoresTemp = [];
+      linhaPreview = null;
+      caminhoInvertido = false;
+      bloqueadoCooldown = false;
+
+      if (quadraAtualTrabalho) {
+        limparElementosVisuais(quadraAtualTrabalho);
+        quadraAtualTrabalho.dadosFacesSalvas = [];
+        salvarDadosMemoria(quadraAtualTrabalho);
+      }
+
+      if (modoMarcarFace) {
+        document.getElementById("face-controls").style.display = "flex";
+      } else {
+        document.getElementById("face-controls").style.display = "none";
+      }
+    }
+
+    function encerrarModoFace() {
+      modoMarcarFace = false;
+      pontosFaceTemp = [];
+      marcadoresTemp = [];
+      linhaPreview = null;
+      bloqueadoCooldown = false;
+      document.getElementById("face-controls").style.display = "none";
+    }
+  </script>
+
+  <!-- Chamada do script do Firebase separado -->
+  <script type="module" src="firebase.js"></script>
+
+</body>
+</html>
