@@ -2,7 +2,7 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
 import { getDatabase, ref, set, onValue } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
 
-// Suas chaves de configuração do Firebase
+// Configuração do Firebase
 const firebaseConfig = {
   apiKey: "AIzaSyCTNTSgggJZMBxyzj-jfjvFvOIolKyRmIg",
   authDomain: "territorios-campo-sba4.firebaseapp.com",
@@ -17,31 +17,71 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const database = getDatabase(app);
 
-// Função para salvar o estado de uma quadra na nuvem
-window.salvarQuadraNuvem = function (quadraId, dados) {
-  set(ref(database, 'quadras/' + quadraId), dados)
+// 1. Função para salvar a quadra no Realtime Database
+window.salvarQuadraFirebase = function (idUnico, dados) {
+  set(ref(database, 'quadras/' + idUnico), dados)
     .then(() => {
-      console.log("Dados sincronizados com sucesso!");
+      console.log("☁️ Dados sincronizados no Firebase para:", idUnico);
     })
     .catch((error) => {
-      console.error("Erro ao salvar na nuvem:", error);
+      console.error("❌ Erro ao salvar no Firebase:", error);
     });
 };
 
-// Escuta mudanças em tempo real na nuvem
+// 2. Escuta ativa em tempo real (Sincronização em tempo real)
 const quadrasRef = ref(database, 'quadras/');
-onValue(quadrasRef, (snapshot) => {
-  const data = snapshot.val();
-  if (data && window.atualizarMapaLocal) {
-    // Atualiza as cores e estados no mapa HTML
-    window.atualizarMapaLocal(data);
-  }
-});
 
-// Função para enviar alertas/notificações para o Kodular
+window.carregarQuadrasFirebase = function () {
+  onValue(quadrasRef, (snapshot) => {
+    const data = snapshot.val();
+    if (!data) return;
+
+    Object.keys(data).forEach(idUnico => {
+      const dadosNuvem = data[idUnico];
+
+      // Atualiza o armazenamento local para manter suporte offline
+      localStorage.setItem("quadra_data_" + idUnico, JSON.stringify(dadosNuvem));
+
+      // Se a quadra já estiver carregada e desenhada no mapa, atualiza ela dinamicamente
+      if (window.quadrasObjetos && window.quadrasObjetos[idUnico]) {
+        const q = window.quadrasObjetos[idUnico];
+        
+        q.estado = dadosNuvem.estado || 0;
+        q.anotacao = dadosNuvem.anotacao || "";
+        q.autorAnotacao = dadosNuvem.autorAnotacao || "";
+        q.dadosFacesSalvas = dadosNuvem.faces || [];
+
+        // Atualiza a cor/estilo da quadra
+        if (q.estado === 1 && window.estilos) {
+          q.setStyle(window.estilos.amarelo);
+        } else if (q.estado === 2 && window.estilos) {
+          q.setStyle(window.estilos.verde);
+          if (window.limparElementosVisuais) window.limparElementosVisuais(q);
+        } else if (window.estilos) {
+          q.setStyle(window.estilos.cinza);
+          if (window.limparElementosVisuais) window.limparElementosVisuais(q);
+        }
+
+        // Restaura as faces no mapa se ela estiver aberta (estado 1)
+        if (q.estado === 1 && window.restaurarFacesSalvas) {
+          if (window.limparElementosVisuais) window.limparElementosVisuais(q);
+          window.restaurarFacesSalvas(q);
+        }
+
+        if (q.atualizarRotulo) q.atualizarRotulo();
+        if (window.atualizarStatusTerritorio) window.atualizarStatusTerritorio(q.idTerritorio);
+      }
+    });
+
+    if (window.atualizarProgressoEIndicador) {
+      window.atualizarProgressoEIndicador();
+    }
+  });
+};
+
+// 3. Comunicação com Kodular (se aplicável)
 window.enviarAlertaParaKodular = function (mensagem) {
   if (window.AppInventor) {
-    // Envia o texto da notificação direto para os blocos do Kodular
     window.AppInventor.setWebViewString(JSON.stringify({
       tipo: "ALERTA",
       conteudo: mensagem
