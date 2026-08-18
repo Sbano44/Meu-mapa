@@ -207,7 +207,7 @@
     <button style="border:none; background:none; color:#3182ce; font-weight:bold; font-size:16px; cursor:pointer;" onclick="trocarUsuario()">Trocar</button>
   </div>
 
-  <!-- Plaquinha Sequencial Fixa (Como Botão Clicável) -->
+  <!-- Plaque Sequencial Fixa (Como Botão Clicável) -->
   <button id="indicador-sequencia" onclick="focarProximaQuadra()">
     📌 Próximo Passo: <span id="texto-proxima-quadra" class="destaque">Carregando...</span>
   </button>
@@ -511,6 +511,12 @@
       atualizarVisibilidadeLabels();
 
       carregarLimitesTerritorios();
+
+      // Carregar dados remotos do Firebase ao iniciar o mapa
+      if (typeof window.carregarQuadrasFirebase === 'function') {
+        window.carregarQuadrasFirebase();
+      }
+
       atualizarProgressoEIndicador();
 
       map.on('click', function(e) {
@@ -831,6 +837,11 @@
         faces: q.dadosFacesSalvas || []
       };
       localStorage.setItem("quadra_data_" + q.idUnico, JSON.stringify(payload));
+
+      // Sincronizar com o Firebase na nuvem
+      if (typeof window.salvarQuadraFirebase === 'function') {
+        window.salvarQuadraFirebase(q.idUnico, payload);
+      }
     }
 
     function carregarDadosMemoria(idUnico) {
