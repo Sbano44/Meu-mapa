@@ -1,8 +1,6 @@
-// Importações do SDK v10 do Firebase para a WEB via CDN
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";[cite: 1]
 import { getDatabase, ref, set, onValue, get } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";[cite: 1]
 
-// Configuração do seu aplicativo Firebase
 const firebaseConfig = {[cite: 1]
   apiKey: "AIzaSyCTNTSgggJZMBxyzj-jfjvFvOIolKyRmIg",[cite: 1]
   authDomain: "territorios-campo-sba4.firebaseapp.com",[cite: 1]
@@ -13,21 +11,19 @@ const firebaseConfig = {[cite: 1]
   appId: "1:845307175979:web:8f55b96aafd97e3240766e"[cite: 1]
 };[cite: 1]
 
-// Inicialização do Firebase e Banco em Tempo Real
 const app = initializeApp(firebaseConfig);[cite: 1]
 const db = getDatabase(app);[cite: 1]
 
-/**
- * Funções de Controle de Administrador (ADM)
- */
 window.verificarPermissaoADM = function(nomeUsuario) {[cite: 1]
   if (!nomeUsuario) return;[cite: 1]
   
-  // Limpa caracteres especiais para evitar erros de nó no Firebase
   const idFormatado = nomeUsuario.trim().replace(/[.#$\[\]]/g, "_");[cite: 1]
 
   get(ref(db, 'administradores/' + idFormatado)).then((snapshot) => {[cite: 1]
-    const ehAdmin = snapshot.exists() && snapshot.val() === true;[cite: 1]
+    const val = snapshot.val();
+    // Aceita true booleano, string "true" ou número 1
+    const ehAdmin = snapshot.exists() && (val === true || val === "true" || val === 1);[cite: 1]
+    
     if (typeof window.aplicarPermissoesADM === 'function') {[cite: 1]
       window.aplicarPermissoesADM(ehAdmin);[cite: 1]
     }
@@ -49,10 +45,6 @@ window.resetarTodasQuadrasNuvem = function() {[cite: 1]
     });[cite: 1]
 };
 
-/**
- * 1. Função para SALVAR alterações na nuvem.
- * Chamada pelo HTML sempre que o estado da quadra, nota ou face muda.
- */
 window.salvarQuadraNuvem = function(idUnico, payload) {[cite: 1]
   if (!idUnico) return;[cite: 1]
   
@@ -65,14 +57,8 @@ window.salvarQuadraNuvem = function(idUnico, payload) {[cite: 1]
     });[cite: 1]
 };
 
-/**
- * 2. Listener em tempo real (ESCUTADOR).
- * Qualquer alteração dispara este trecho e atualiza o mapa em todas as telas conectadas.[cite: 1]
- */
 onValue(ref(db, 'quadras'), (snapshot) => {[cite: 1]
   const data = snapshot.val();[cite: 1]
-  
-  // Envia os dados sincronizados para a função do HTML[cite: 1]
   if (typeof window.atualizarMapaLocal === 'function') {[cite: 1]
     window.atualizarMapaLocal(data);[cite: 1]
   }
@@ -80,9 +66,6 @@ onValue(ref(db, 'quadras'), (snapshot) => {[cite: 1]
   console.error("Erro ao escutar mudanças no Firebase:", error);[cite: 1]
 });[cite: 1]
 
-/**
- * 3. Ponte de notificação com o Kodular (WebViewString)[cite: 1]
- */
 window.enviarAlertaParaKodular = function(mensagem) {[cite: 1]
   if (window.AppInventor && typeof window.AppInventor.setWebViewString === 'function') {[cite: 1]
     window.AppInventor.setWebViewString(mensagem);[cite: 1]
