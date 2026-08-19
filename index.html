@@ -42,6 +42,26 @@
       box-shadow: 0 3px 8px rgba(0,0,0,0.3); display: flex; align-items: center; justify-content: space-between; font-size: 18px;
     }
 
+    /* Estilo do Painel ADM */
+    #adm-panel {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      z-index: 3000;
+      display: none; /* Oculto por padrão */
+    }
+    .btn-adm {
+      background: #7f1d1d;
+      color: white;
+      border: 2px solid #ef4444;
+      padding: 12px 18px;
+      border-radius: 25px;
+      font-weight: bold;
+      font-size: 15px;
+      cursor: pointer;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+    }
+
     /* Plaque Sequencial Fixa */
     #indicador-sequencia {
       position: fixed;
@@ -207,6 +227,11 @@
     <button style="border:none; background:none; color:#3182ce; font-weight:bold; font-size:16px; cursor:pointer;" onclick="trocarUsuario()">Trocar</button>
   </div>
 
+  <!-- Painel do Administrador (Botão de Reset) -->
+  <div id="adm-panel">
+    <button class="btn-adm" onclick="confirmarResetQuadras()">⚙️ Resetar Todas as Quadras</button>
+  </div>
+
   <!-- Plaque Sequencial Fixa (Como Botão Clicável) -->
   <button id="indicador-sequencia" onclick="focarProximaQuadra()">
     📌 Próximo Passo: <span id="texto-proxima-quadra" class="destaque">Carregando...</span>
@@ -300,9 +325,34 @@
       if (usuarioAtual) {
         document.getElementById("login-screen").style.display = "none";
         document.getElementById("display-user-name").innerText = usuarioAtual;
+        checarPermissoesUsuario();
         iniciarMapa();
       }
     };
+
+    function checarPermissoesUsuario() {
+      if (typeof window.verificarPermissaoADM === 'function') {
+        window.verificarPermissaoADM(usuarioAtual);
+      }
+    }
+
+    window.aplicarPermissoesADM = function(ehAdmin) {
+      const pnl = document.getElementById("adm-panel");
+      if (pnl) {
+        pnl.style.display = ehAdmin ? "block" : "none";
+      }
+    };
+
+    function confirmarResetQuadras() {
+      if (confirm("ATENÇÃO ADM: Deseja realmente zerar e limpar todas as quadras do mapa? Essa ação afeta todos os usuários.")) {
+        if (typeof window.resetarTodasQuadrasNuvem === 'function') {
+          window.resetarTodasQuadrasNuvem();
+          localStorage.clear();
+          mostrarToast("⚙️ Quadras resetadas com sucesso!");
+          setTimeout(() => { location.reload(); }, 1000);
+        }
+      }
+    }
 
     function entrarNoApp() {
       const nomeDigitado = document.getElementById("user-input-name").value.trim();
@@ -311,6 +361,7 @@
       localStorage.setItem("usuario_nome", nomeDigitado);
       document.getElementById("display-user-name").innerText = nomeDigitado;
       document.getElementById("login-screen").style.display = "none";
+      checarPermissoesUsuario();
       if (!map) iniciarMapa();
     }
 
@@ -842,7 +893,20 @@
 
     /* Recebe atualização em tempo real do Firebase e ajusta o Mapa */
     window.atualizarMapaLocal = function(dadosNuvem) {
-      if (!dadosNuvem) return;
+      if (!dadosNuvem) {
+        // Se dadosNuvem for nulo (Reset), zera a tela localmente
+        Object.keys(quadrasObjetos).forEach(idUnico => {
+          const q = quadrasObjetos[idUnico];
+          q.estado = 0;
+          q.setStyle(estilos.cinza);
+          limparElementosVisuais(q);
+          q.atualizarRotulo();
+          atualizarStatusTerritorio(q.idTerritorio);
+        });
+        localStorage.clear();
+        atualizarProgressoEIndicador();
+        return;
+      }
 
       Object.keys(dadosNuvem).forEach(idUnico => {
         const payload = dadosNuvem[idUnico];
