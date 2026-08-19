@@ -7,7 +7,6 @@
   
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   
-  <!-- Bibliotecas para Cache Offline de Tiles (PouchDB + Leaflet TileLayer PouchDB) -->
   <script src="https://cdn.jsdelivr.net/npm/pouchdb@7.3.1/dist/pouchdb.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/leaflet.tilelayer.pouchdbcached@1.0.0/L.TileLayer.PouchDBCached.js"></script>
 
@@ -42,13 +41,12 @@
       box-shadow: 0 3px 8px rgba(0,0,0,0.3); display: flex; align-items: center; justify-content: space-between; font-size: 18px;
     }
 
-    /* Estilo do Painel ADM */
     #adm-panel {
       position: fixed;
       bottom: 20px;
       right: 20px;
       z-index: 3000;
-      display: none; /* Oculto por padrão */
+      display: none;
     }
     .btn-adm {
       background: #7f1d1d;
@@ -62,7 +60,6 @@
       box-shadow: 0 4px 12px rgba(0,0,0,0.4);
     }
 
-    /* Plaque Sequencial Fixa */
     #indicador-sequencia {
       position: fixed;
       top: 65px;
@@ -97,7 +94,6 @@
       color: #38bdf8;
     }
 
-    /* Alerta de Quadras Puladas */
     #alerta-pulados {
       position: fixed;
       top: 125px;
@@ -128,7 +124,6 @@
       line-height: 1;
     }
 
-    /* Barra Superior com Botão Voltar */
     #territory-actions {
       position: absolute; top: 130px; left: 10px; right: 10px; z-index: 1000;
       display: none; justify-content: center; align-items: center;
@@ -139,7 +134,6 @@
       box-shadow: 0 4px 10px rgba(0,0,0,0.4); width: 100%; max-width: 380px;
     }
 
-    /* Painel Flutuante Acessível */
     #face-controls {
       position: absolute; top: 185px; left: 50%; transform: translateX(-50%);
       z-index: 2000; background: #ffffff; padding: 12px 16px; border-radius: 35px;
@@ -153,7 +147,6 @@
     .btn-invert { background: #D69E2E; }
     .btn-delete { background: #E53E3E; }
 
-    /* Rótulos e Tooltips */
     .label-quadra, .leaflet-tooltip { 
       background: rgba(255, 255, 255, 0.95) !important; 
       border: 1px solid #333 !important; 
@@ -179,7 +172,6 @@
       visibility: hidden !important;
     }
 
-    /* Bandeja Inferior */
     #bottom-sheet {
       position: absolute; bottom: -100%; left: 0; right: 0; z-index: 2000;
       background: #ffffff; border-top-left-radius: 22px; border-top-right-radius: 22px;
@@ -199,7 +191,6 @@
       display: none; font-size: 18px; text-align: center;
     }
 
-    /* Animação do Piscar em Azul para destacar a Quadra */
     @keyframes piscarAzul {
       0% { fill-color: #38bdf8; fill-opacity: 0.9; stroke-color: #0284c7; stroke-width: 6; }
       50% { fill-color: #0284c7; fill-opacity: 1; stroke-color: #0369a1; stroke-width: 8; }
@@ -227,17 +218,14 @@
     <button style="border:none; background:none; color:#3182ce; font-weight:bold; font-size:16px; cursor:pointer;" onclick="trocarUsuario()">Trocar</button>
   </div>
 
-  <!-- Painel do Administrador (Botão de Reset) -->
   <div id="adm-panel">
     <button class="btn-adm" onclick="confirmarResetQuadras()">⚙️ Resetar Todas as Quadras</button>
   </div>
 
-  <!-- Plaque Sequencial Fixa (Como Botão Clicável) -->
   <button id="indicador-sequencia" onclick="focarProximaQuadra()">
     📌 Próximo Passo: <span id="texto-proxima-quadra" class="destaque">Carregando...</span>
   </button>
 
-  <!-- Alerta de Quadras Puladas com Botão Fechar -->
   <div id="alerta-pulados">
     <button id="btn-fechar-alerta" onclick="fecharAlertaPulados()">✕</button>
     ⚠️ <strong>Atenção:</strong> Quadras anteriores foram puladas: <br>
@@ -331,8 +319,10 @@
     };
 
     function checarPermissoesUsuario() {
-      if (typeof window.verificarPermissaoADM === 'function') {
+      if (typeof window.verificarPermissaoADM === 'function' && usuarioAtual) {
         window.verificarPermissaoADM(usuarioAtual);
+      } else {
+        setTimeout(checarPermissoesUsuario, 500);
       }
     }
 
@@ -397,7 +387,6 @@
       return L.latLngBounds(allPoints);
     }
 
-    /* --- Lógica da Plaque Sequencial e Alerta de Pulados --- */
     function obterListaOrdenadaQuadras() {
       if (typeof DADOS_TERRITORIOS === 'undefined') return [];
       let lista = [];
@@ -875,12 +864,10 @@
       };
       localStorage.setItem("quadra_data_" + q.idUnico, JSON.stringify(payload));
 
-      // 1. Sincronização com o Firebase em Nuvem (chama a função exportada pelo firebase.js)
       if (typeof window.salvarQuadraNuvem === 'function') {
         window.salvarQuadraNuvem(q.idUnico, payload);
       }
 
-      // 2. Notificação e dados em tempo real para o Kodular
       if (typeof window.enviarAlertaParaKodular === 'function') {
         window.enviarAlertaParaKodular(`Quadra ${q.nome} atualizada.`);
       }
@@ -891,10 +878,8 @@
       return raw ? JSON.parse(raw) : null;
     }
 
-    /* Recebe atualização em tempo real do Firebase e ajusta o Mapa */
     window.atualizarMapaLocal = function(dadosNuvem) {
       if (!dadosNuvem) {
-        // Se dadosNuvem for nulo (Reset), zera a tela localmente
         Object.keys(quadrasObjetos).forEach(idUnico => {
           const q = quadrasObjetos[idUnico];
           q.estado = 0;
@@ -911,10 +896,8 @@
       Object.keys(dadosNuvem).forEach(idUnico => {
         const payload = dadosNuvem[idUnico];
         
-        // Atualiza no Armazenamento Local
         localStorage.setItem("quadra_data_" + idUnico, JSON.stringify(payload));
 
-        // Se a quadra já estiver desenhada na tela, atualiza os estilos e elementos
         const objQuadra = quadrasObjetos[idUnico];
         if (objQuadra) {
           objQuadra.estado = payload.estado || 0;
@@ -1188,7 +1171,6 @@
     }
   </script>
 
-  <!-- Chamada do script do Firebase separado -->
   <script type="module" src="firebase.js"></script>
 
 </body>
