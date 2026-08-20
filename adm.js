@@ -35,11 +35,12 @@ window.renderizarUsuariosADM = function(usuariosObj) {
   Object.keys(usuariosObj).forEach(key => {
     const u = usuariosObj[key];
     const ehAdmin = u.cargo === 'admin';
+    const nomeExibicao = u.nome || key;
     
     html += `
       <div class="user-card">
         <div>
-          <strong style="font-size:16px;">${u.nome}</strong><br>
+          <strong style="font-size:16px;">${nomeExibicao}</strong><br>
           <small style="color:#a0aec0;">Cargo: ${u.cargo || 'publicador'}</small>
         </div>
         <select onchange="window.salvarCargoUsuario('${key}', this.value)">
@@ -59,6 +60,7 @@ window.renderizarEscalaADM = function(escalaObj) {
   if (!container) return;
 
   const diasSemana = [
+    { id: 'segunda', nome: 'Segunda-feira' },
     { id: 'terca', nome: 'Terça-feira' },
     { id: 'quarta', nome: 'Quarta-feira' },
     { id: 'quinta', nome: 'Quinta-feira' },
@@ -92,7 +94,7 @@ window.renderizarEscalaADM = function(escalaObj) {
 
 // Coleta e salva os dados da escala preenchida
 window.salvarEscalaForm = function() {
-  const dias = ['terca', 'quarta', 'quinta', 'sexta', 'sabado', 'domingo'];
+  const dias = ['segunda', 'terca', 'quarta', 'quinta', 'sexta', 'sabado', 'domingo'];
   const novaEscala = {};
 
   dias.forEach(dia => {
