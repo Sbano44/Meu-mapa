@@ -1,5 +1,5 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-import { getDatabase, ref, set, onValue, get } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
+import { getDatabase, ref, set, onValue, get, update } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyCTNTSgggJZMBxyzj-jfjvFvOIolKyRmIg",
@@ -14,14 +14,18 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
 
+function sanitizeKey(key) {
+  return key.replace(/[.#$/\[\]]/g, "_");
+}
+
 window.verificarPermissaoADM = function(nomeUsuario) {
   if (!nomeUsuario) return;
+  const userKey = sanitizeKey(nomeUsuario);
 
-  get(ref(db, 'administradores')).then((snapshot) => {
+  get(ref(db, 'usuarios/' + userKey)).then((snapshot) => {
     if (snapshot.exists()) {
-      const adms = snapshot.val();
-      // Verifica se o nome digitado existe no nó de administradores (independente de maiúsculas/minúsculas)
-      const ehAdmin = Object.keys(adms).some(nome => nome.toLowerCase() === nomeUsuario.trim().toLowerCase() && adms[nome] === true);
+      const dados = snapshot.val();
+      const ehAdmin = dados && dados.cargo === 'admin';
       
       if (typeof window.aplicarPermissoesADM === 'function') {
         window.aplicarPermissoesADM(ehAdmin);
@@ -75,3 +79,47 @@ window.enviarAlertaParaKodular = function(mensagem) {
     window.AppInventor.setWebViewString(mensagem);
   }
 };
+
+window.registrarUsuarioNuvem = function(nomeUsuario) {
+  if (!nomeUsuario) return;
+  const userKey = sanitizeKey(nomeUsuario);
+  const userRef = ref(db, 'usuarios/' + userKey);
+  
+  get(userRef).then((snapshot) => {
+    if (!snapshot.exists()) {
+      set(userRef, {
+        nome: nomeUsuario,
+        cargo: 'publicador',
+        ultimoAcesso: new Date().toISOString()
+      });
+    } else {
+      update(userRef, {
+        ultimoAcesso: new Date().toISOString()
+      });
+    }
+  }).catch(err => console.error("Erro ao registrar usuário:", err));
+};
+
+window.salvarCargoUsuario = function(userKey, novoCargo) {
+  const userRef = ref(db, 'usuarios/' + userKey);
+  update(userRef, { cargo: novoCargo });
+};
+
+window.salvarEscalaSemanal = function(escalaData) {
+  const escalaRef = ref(db, 'escala_dirigentes');
+  set(escalaRef, escalaData);
+};
+
+onValue(ref(db, 'usuarios'), (snapshot) => {
+  const usuarios = snapshot.val();
+  if (typeof window.renderizarUsuariosADM === 'function') {
+    window.renderizarUsuariosADM(usuarios);
+  }
+});
+
+onValue(ref(db, 'escala_dirigentes'), (snapshot) => {
+  const escala = snapshot.val();
+  if (typeof window.renderizarEscalaADM === 'function') {
+    window.renderizarEscalaADM(escala);
+  }
+});
