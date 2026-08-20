@@ -414,10 +414,19 @@
       if (usuarioAtual) {
         document.getElementById("login-screen").style.display = "none";
         document.getElementById("display-user-name").innerText = usuarioAtual;
+        registrarUsuarioSePronto();
         checarPermissoesUsuario();
         iniciarMapa();
       }
     };
+
+    function registrarUsuarioSePronto() {
+      if (typeof window.registrarUsuarioNuvem === 'function' && usuarioAtual) {
+        window.registrarUsuarioNuvem(usuarioAtual);
+      } else if (usuarioAtual) {
+        setTimeout(registrarUsuarioSePronto, 500);
+      }
+    }
 
     function checarPermissoesUsuario() {
       if (typeof window.verificarPermissaoADM === 'function' && usuarioAtual) {
@@ -453,10 +462,7 @@
       document.getElementById("display-user-name").innerText = nomeDigitado;
       document.getElementById("login-screen").style.display = "none";
       
-      if (typeof window.registrarUsuarioNuvem === 'function') {
-        window.registrarUsuarioNuvem(nomeDigitado);
-      }
-      
+      registrarUsuarioSePronto();
       checarPermissoesUsuario();
       if (!map) iniciarMapa();
     }
